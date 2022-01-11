@@ -22,6 +22,64 @@ def get_daily_price(ticker, start_date, end_date) :
     return df_prc
 
 
+def get_bdate_info(start_date, end_date) :
+    date = pd.DataFrame(stock.get_previous_business_days(fromdate=start_date, todate=end_date)).rename(columns={0:'일자'})
+    prevbdate = date.shift(1).rename(columns={'일자':'전영업일자'})
+    date = pd.concat([date,prevbdate],axis =1).dropna()
+    return date
+
+def get_prc_adj (start_date):
+    query_str_parms = {
+    'locale': 'ko_KR',
+    'mktId': 'ALL',
+    'strtDd': start_date,
+    'endDd': start_date,
+    'adjStkPrc_check': 'Y',
+    'adjStkPrc': '2',
+    'share': '1',
+    'money': '1',
+    'csvxls_isNo': 'false',
+    'name': 'fileDown',
+    'url': 'dbms/MDC/STAT/standard/MDCSTAT01602'
+        }
+    headers = {
+        'Referer': 'http://data.krx.co.kr/contents/MDC/MDI/mdiLoader',
+        'Upgrade-Insecure-Requests': '1',
+        'User-Agent': 'Mozilla/5.0'
+        }
+    r = requests.get('http://data.krx.co.kr/comm/fileDn/GenerateOTP/generate.cmd', query_str_parms, headers=headers)
+    form_data = {
+        'code': r.content
+        }
+    r = requests.post('http://data.krx.co.kr/comm/fileDn/download_excel/download.cmd', form_data, headers=headers)
+    df = pd.read_excel(BytesIO(r.content))
+    for i in range(0, len(df.종목코드)):
+        df.종목코드.iloc[i] = str(df.종목코드[i]).zfill(6)
+    df = df[['종목코드','종료일 종가']].rename(columns={'종목코드':'티커','종료일 종가':datetime.strftime(datetime.strptime(start_date, "%Y%m%d"),"%Y-%m-%d")})
+    return df
+
+
+def get_daily_prc_adj(start_date, end_date):
+    bdate = get_bdate_info(start_date, end_date)
+    df = get_prc_adj(datetime.strftime(bdate.iloc[0].일자, "%Y%m%d"))
+    for i in range(1,len(bdate)):
+        df_temp = get_prc_adj(datetime.strftime(bdate.iloc[i].일자, "%Y%m%d"))
+        df = pd.merge(df, df_temp, on ='티커', how = 'outer')
+    df_T = df.T
+    df_T.columns = list(df['티커'])
+    return df_T
+
+def get_stock_num(start_date,end_date) :
+    bdate = get_bdate_info(start_date, end_date)
+    df = stock.get_market_cap_by_ticker(bdate.iloc[0].일자).reset_index()[['티커','상장주식수']].rename(columns={'상장주식수':bdate.iloc[0].일자})
+    for i in range(1,len(bdate)):
+        df_temp = stock.get_market_cap_by_ticker(bdate.iloc[i].일자).reset_index()[['티커','상장주식수']].rename(columns={'상장주식수':bdate.iloc[i].일자})
+        df = pd.merge(df, df_temp, on ='티커', how = 'outer')
+    df_T = df.T
+    df_T.columns = list(df['티커'])
+    return df_T
+
+
 def get_daily_siga(ticker, start_date, end_date) :
     df_siga = pd.DataFrame()
     for i in range(0,len(ticker)):
@@ -32,6 +90,7 @@ def get_daily_siga(ticker, start_date, end_date) :
         except : pass
     df_siga = df_siga.reset_index(drop = False)
     return df_siga
+
 
 def get_bdate_info(start_date, end_date) :
     date = pd.DataFrame(stock.get_previous_business_days(fromdate=start_date, todate=end_date)).rename(columns={0:'일자'})
