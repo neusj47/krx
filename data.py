@@ -28,7 +28,7 @@ def get_bdate_info(start_date, end_date) :
     date = pd.concat([date,prevbdate],axis =1).dropna()
     return date
 
-def get_prc_adj (start_date):
+def get_prc(start_date):
     query_str_parms = {
     'locale': 'ko_KR',
     'mktId': 'ALL',
@@ -58,12 +58,11 @@ def get_prc_adj (start_date):
     df = df[['종목코드','종료일 종가']].rename(columns={'종목코드':'티커','종료일 종가':datetime.strftime(datetime.strptime(start_date, "%Y%m%d"),"%Y-%m-%d")})
     return df
 
-
-def get_daily_prc_adj(start_date, end_date):
+def get_daily_prc(start_date, end_date):
     bdate = get_bdate_info(start_date, end_date)
-    df = get_prc_adj(datetime.strftime(bdate.iloc[0].일자, "%Y%m%d"))
+    df = get_prc(datetime.strftime(bdate.iloc[0].일자, "%Y%m%d"))
     for i in range(1,len(bdate)):
-        df_temp = get_prc_adj(datetime.strftime(bdate.iloc[i].일자, "%Y%m%d"))
+        df_temp = get_prc(datetime.strftime(bdate.iloc[i].일자, "%Y%m%d"))
         df = pd.merge(df, df_temp, on ='티커', how = 'outer')
     df_T = df.T
     df_T.columns = list(df['티커'])
@@ -79,7 +78,6 @@ def get_stock_num(start_date,end_date) :
     df_T.columns = list(df['티커'])
     return df_T
 
-
 def get_daily_siga(ticker, start_date, end_date) :
     df_siga = pd.DataFrame()
     for i in range(0,len(ticker)):
@@ -90,7 +88,6 @@ def get_daily_siga(ticker, start_date, end_date) :
         except : pass
     df_siga = df_siga.reset_index(drop = False)
     return df_siga
-
 
 def get_bdate_info(start_date, end_date) :
     date = pd.DataFrame(stock.get_previous_business_days(fromdate=start_date, todate=end_date)).rename(columns={0:'일자'})

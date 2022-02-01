@@ -10,25 +10,74 @@ from io import BytesIO
 import FinanceDataReader as fdr
 
 
-def get_daily_universe(universe) :
-    rebal_date = list(universe.날짜.unique())
-    df = pd.DataFrame()
-    for s in range(1, len(rebal_date)):
-        bdate = stock.get_previous_business_days(
-            fromdate=datetime.strftime(pd.to_datetime(rebal_date[s - 1]), "%Y%m%d"),
-            todate=datetime.strftime(pd.to_datetime(rebal_date[s]), "%Y%m%d"))
-        pf_info = universe[universe.날짜 == rebal_date[s - 1]]
-        df_pf = pd.DataFrame()
-        for i in range(1, len(bdate)):
-            date_list = pd.DataFrame(np.repeat(bdate[i], len(pf_info))).rename(columns={0: '일자'})
-            ohlcv = stock.get_market_ohlcv_by_ticker(datetime.strftime(bdate[i], "%Y%m%d"), market='ALL').reset_index()[
-                ['티커', '시가총액', '등락률']]
-            df_pf_temp = pd.concat([date_list, pf_info[['티커', '종목명']].reset_index(drop=True)], axis=1)
-            df_pf_temp = pd.merge(df_pf_temp, ohlcv, on='티커', how='inner')
-            df_pf_temp = df_pf_temp[['일자', '티커', '종목명', '시가총액', '등락률']]
-            df_pf = pd.concat([df_pf, df_pf_temp], axis=0).reset_index(drop=True)
-        df = pd.concat([df, df_pf], axis=0).reset_index(drop=True)
+def get_etf_info (stddate):
+    query_str_parms = {
+    'locale': 'ko_KR',
+    'idxMktClssId2': '',
+    'inqCondTpCd1': '0',
+    'inqCondTpCd3': '0',
+    'inqCondTpCd4': '0',
+    'inqCondTpCd2': '0',
+    'srchStrNm': '',
+    'idxAsstClssId1': '00',
+    'idxMktClssId': '00',
+    'idxMktClssId3': '01',
+    'idxMktClssId1': '02',
+    'countryBox2': '0208',
+    'countryBox1': '',
+    'idxAsstClssId2': '00',
+    'idxAsstClssId3': '00',
+    'taxTpCd': '0',
+    'idxLvrgInvrsTpCd': 'TT',
+    'asstcomId': '00000',
+    'gubun': '1',
+    'trdDd': stddate,
+    # 'strtDd': y1_ago,
+    'endDd': stddate,
+    'inqCondTp1_Box1': '0',
+    'inqCondTp2_Box1': '0',
+    'inqCondTp3_Box1': '0',
+    'inqCondTp4_Box1': '0',
+    'inqCondTpCd5': '0',
+    'inqCondTp1_Box2': '0',
+    'inqCondTp3_Box2': '0',
+    'inqCondTp4_Box2': '0',
+    'inqCondTpCd6': '1',
+    'sortMethdTpCd': '2',
+    'inqCondTp2_Box2': '0',
+    'inqCondTpCd7': '0',
+    'inqCondTpCd8': '0',
+    'inqCondTpCd9': '0',
+    'money': '3',
+    'csvxls_isNo': 'false',
+    'name': 'fileDown',
+    'url': 'dbms/MDC/STAT/standard/MDCSTAT05101'
+    }
+    headers = {
+        'Referer': 'http://data.krx.co.kr/contents/MDC/MDI/mdiLoader',
+        'Upgrade-Insecure-Requests': '1',
+        'User-Agent': 'Mozilla/5.0'
+        }
+    r = requests.get('http://data.krx.co.kr/comm/fileDn/GenerateOTP/generate.cmd', query_str_parms, headers=headers)
+    form_data = {
+        'code': r.content
+        }
+    r = requests.post('http://data.krx.co.kr/comm/fileDn/download_excel/download.cmd', form_data, headers=headers)
+    df = pd.read_excel(BytesIO(r.content))
+    df['자산분류'] = ''
+    df['자산분류상세'] = ''
+    for i in range(0, len(df.종목코드)):
+        df.종목코드.iloc[i] = str(df.종목코드[i]).zfill(6)
+        df['자산분류'].iloc[i] = df['분류체계'][i].split('-')[0]
+        try:
+            df['자산분류상세'].iloc[i] = df['분류체계'][i].split('-')[1]
+        except:
+            df['자산분류상세'].iloc[i] = df['분류체계'][i].split('-')[0]
+    df = df[['종목코드','종목명','상장일','기초지수','복제방법','총보수','자산분류','자산분류상세']].rename(columns={'종목코드':'ETF코드','종목명':'ETF명'})
     return df
+
+stddate = '20220128'
+info =  get_etf_info (stddate)
 
 
 def get_etf_pdf(stddate):
@@ -62,6 +111,28 @@ def get_etf_pdf(stddate):
     df = df[['날짜','종목코드','구성종목명','주식수(계약수)','시가총액']].rename(columns={'종목코드':'티커','구성종목명':'종목명','주식수(계약수)':'수량'})
     return df
 
+
+def get_daily_universe(universe) :
+    rebal_date = list(universe.날짜.unique())
+    df = pd.DataFrame()
+    for s in range(1, len(rebal_date)):
+        bdate = stock.get_previous_business_days(
+            fromdate=datetime.strftime(pd.to_datetime(rebal_date[s - 1]), "%Y%m%d"),
+            todate=datetime.strftime(pd.to_datetime(rebal_date[s]), "%Y%m%d"))
+        pf_info = universe[universe.날짜 == rebal_date[s - 1]]
+        df_pf = pd.DataFrame()
+        for i in range(1, len(bdate)):
+            date_list = pd.DataFrame(np.repeat(bdate[i], len(pf_info))).rename(columns={0: '일자'})
+            ohlcv = stock.get_market_ohlcv_by_ticker(datetime.strftime(bdate[i], "%Y%m%d"), market='ALL').reset_index()[
+                ['티커', '시가총액', '등락률']]
+            df_pf_temp = pd.concat([date_list, pf_info[['티커', '종목명']].reset_index(drop=True)], axis=1)
+            df_pf_temp = pd.merge(df_pf_temp, ohlcv, on='티커', how='inner')
+            df_pf_temp = df_pf_temp[['일자', '티커', '종목명', '시가총액', '등락률']]
+            df_pf = pd.concat([df_pf, df_pf_temp], axis=0).reset_index(drop=True)
+        df = pd.concat([df, df_pf], axis=0).reset_index(drop=True)
+    return df
+
+
 def get_etf_prc(stddate):
     query_str_parms = {
         'trdDd': stddate,
@@ -86,8 +157,47 @@ def get_etf_prc(stddate):
     df['전일종가'] = df['종가'] - df['대비']
     for i in range(0,len(df.종목코드)) :
         df.종목코드.iloc[i] = str(df.종목코드[i]).zfill(6)
-    df = df[['날짜','종목코드','종목명','종가','전일종가','대비','등락률','시가총액']].rename(columns={'종목코드':'티커','시가총액':'상장시가총액'})
+    df = df[['날짜','종목코드','종목명','종가','전일종가','대비','등락률','상장좌수','시가총액']].rename(columns={'종목코드':'티커','시가총액':'상장시가총액'})
     return df
+etf_prc = get_etf_prc(stddate)
+
+
+def get_bdate_info(start_date, end_date) :
+    date = pd.DataFrame(stock.get_previous_business_days(fromdate=start_date, todate=end_date)).rename(columns={0:'일자'})
+    prevbdate = date.shift(1).rename(columns={'일자':'전영업일자'})
+    date = pd.concat([date,prevbdate],axis =1).dropna()
+    return date
+
+
+def get_etf_num(start_date,end_date) :
+    bdate = get_bdate_info(start_date, end_date)
+    df = stock.get_etf_ohlcv_by_ticker(bdate.iloc[0].일자).reset_index()[['티커','상장좌수']].rename(columns={'상장좌수':bdate.iloc[0].일자})
+    for i in range(1,len(bdate)):
+        df_temp = stock.get_etf_ohlcv_by_ticker(bdate.iloc[i].일자).reset_index()[['티커','상장좌수']].rename(columns={'상장좌수':bdate.iloc[i].일자})
+        df = pd.merge(df, df_temp, on ='티커', how = 'outer')
+    df_T = df.T
+    df_T.columns = list(df['티커'])
+    return df_T
+
+def get_etf_siga(start_date,end_date) :
+    bdate = get_bdate_info(start_date, end_date)
+    df = stock.get_etf_ohlcv_by_ticker(bdate.iloc[0].일자).reset_index()[['티커','시가총액']].rename(columns={'시가총액':bdate.iloc[0].일자})
+    for i in range(1,len(bdate)):
+        df_temp = stock.get_etf_ohlcv_by_ticker(bdate.iloc[i].일자).reset_index()[['티커','시가총액']].rename(columns={'시가총액':bdate.iloc[i].일자})
+        df = pd.merge(df, df_temp, on ='티커', how = 'outer')
+    df_T = df.T
+    df_T.columns = list(df['티커'])
+    return df_T
+
+def get_etf_fprc(start_date,end_date) :
+    bdate = get_bdate_info(start_date, end_date)
+    df = stock.get_etf_ohlcv_by_ticker(bdate.iloc[0].일자).reset_index()[['티커','종가']].rename(columns={'종가':bdate.iloc[0].일자})
+    for i in range(1,len(bdate)):
+        df_temp = stock.get_etf_ohlcv_by_ticker(bdate.iloc[i].일자).reset_index()[['티커','종가']].rename(columns={'종가':bdate.iloc[i].일자})
+        df = pd.merge(df, df_temp, on ='티커', how = 'outer')
+    df_T = df.T
+    df_T.columns = list(df['티커'])
+    return df_T
 
 def get_kospi_prc(stddate):
     query_str_parms = {
@@ -148,8 +258,6 @@ def get_kosdaq_prc(stddate):
         df.종목코드.iloc[i] = str(df.종목코드[i]).zfill(6)
     df = df[['날짜','종목코드','종목명','종가','대비','등락률','상장시가총액']].rename(columns={'종목코드':'티커'})
     return df
-
-bdate =stock.get_previous_business_days(fromdate="20210526", todate="20220103")
 
 def calc_idxrtn_by_date(date):
     df_idx = pd.DataFrame()
